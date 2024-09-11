@@ -1,4 +1,3 @@
-
 import java.util.*;
 
 enum ProcessState {
@@ -18,6 +17,8 @@ class Process {
     int remainingCPUTime;
     int credits;
     ProcessState state;
+    int startTime;
+    int completionTime;
 
     public Process(String name, int cpuBurst, int ioDuration, int totalCPUTime, int order, int priority) {
         this.name = name;
@@ -29,6 +30,8 @@ class Process {
         this.remainingCPUTime = totalCPUTime;
         this.credits = priority;
         this.state = ProcessState.READY;
+        this.startTime = -1;
+        this.completionTime = 0;
     }
 }
 
@@ -51,8 +54,8 @@ class Scheduler {
             } else {
                 redistributeCredits();
             }
-            currentTime++;
             updateProcessStates();
+            currentTime++;
         }
         printResults();
     }
@@ -76,6 +79,9 @@ class Scheduler {
             }
             runningProcess = process;
             process.state = ProcessState.RUNNING;
+            if (process.startTime == -1) {
+                process.startTime = currentTime;
+            }
         }
 
         process.remainingCPUTime--;
@@ -83,6 +89,7 @@ class Scheduler {
 
         if (process.remainingCPUTime == 0) {
             process.state = ProcessState.EXIT;
+            process.completionTime = currentTime;
             runningProcess = null;
         } else if (process.cpuBurst > 0 && process.remainingCPUTime % process.cpuBurst == 0) {
             process.state = ProcessState.BLOCKED;
@@ -111,7 +118,8 @@ class Scheduler {
     private void printResults() {
         System.out.println("Process Scheduling Results:");
         for (Process p : processes) {
-            System.out.printf("Process %s: Turnaround Time = %d ms%n", p.name, currentTime);
+            int turnaroundTime = p.completionTime - p.startTime;
+            System.out.printf("Process %s: Turnaround Time = %d ms%n", p.name, turnaroundTime);
         }
     }
 }
@@ -124,13 +132,7 @@ public class ProcessScheduler {
             new Process("C", 0, 0, 14, 3, 3),
             new Process("D", 0, 0, 10, 4, 3)
         );
-
         Scheduler scheduler = new Scheduler(processes);
         scheduler.run();
     }
 }
-Made with
-Artifacts are user-generated and may contain unverified or potentially unsafe content.
-Report
-Remix Artifact
-
