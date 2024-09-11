@@ -19,6 +19,7 @@ class Process {
     ProcessState state;
     int startTime;
     int completionTime;
+    int blockedTimeRemaining;
 
     public Process(String name, int cpuBurst, int ioDuration, int totalCPUTime, int order, int priority) {
         this.name = name;
@@ -82,6 +83,11 @@ class Scheduler {
             if (process.startTime == -1) {
                 process.startTime = currentTime;
             }
+            if (process.cpuBurst > 0 && process.remainingCPUTime % process.cpuBurst == 0) {
+                process.state = ProcessState.BLOCKED;
+                process.blockedTimeRemaining = process.ioDuration;
+                runningProcess = null;
+            }        
         }
 
         process.remainingCPUTime--;
@@ -108,7 +114,7 @@ class Scheduler {
     private void updateProcessStates() {
         for (Process p : processes) {
             if (p.state == ProcessState.BLOCKED) {
-                if (currentTime % p.ioDuration == 0) {
+                if (--p.blockedTimeRemaining == 0) {
                     p.state = ProcessState.READY;
                 }
             }
