@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.stream.Collectors;
 
 enum ProcessState {
     READY,
@@ -108,6 +109,18 @@ class Scheduler {
             if (p.state != ProcessState.EXIT) {
                 p.credits = p.credits / 2 + p.priority;
             }
+        }
+        updateOrder();
+    }
+    
+    private void updateOrder() {
+        List<Process> nonExitedProcesses = processes.stream()
+                .filter(p -> p.state != ProcessState.EXIT)
+                .sorted(Comparator.comparingInt(p -> p.credits))  // Processos com menos créditos recebem menor ordem
+                .collect(Collectors.toList());
+    
+        for (int i = 0; i < nonExitedProcesses.size(); i++) {
+            nonExitedProcesses.get(i).order = i + 1;
         }
     }
 
