@@ -57,6 +57,7 @@ class Scheduler {
                 redistributeCredits();
             }
             updateProcessStates();
+            printTimeline();
             currentTime++;
         }
         printResults();
@@ -141,7 +142,22 @@ class Scheduler {
             System.out.printf("Process %s: Turnaround Time = %d ms%n", p.name, turnaroundTime);
         }
     }
+
+    private void printTimeline() {
+        System.out.println("Timeline:");
+        for (int i = 0; i < currentTime; i++) {
+            final int currentTimeSlot = i;  // Criar uma variável final ou efetivamente final
+            System.out.printf("%d: ", currentTimeSlot);
+            processes.forEach(p -> {
+                if (p.startTime <= currentTimeSlot && (p.completionTime == 0 || p.completionTime > currentTimeSlot)) {
+                    System.out.printf("%s(%s) ", p.name, p.state);
+                }
+            });
+            System.out.println();
+        }
+    }
 }
+
 
 public class ProcessScheduler {
     public static void main(String[] args) {
