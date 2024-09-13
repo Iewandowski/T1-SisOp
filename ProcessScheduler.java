@@ -1,5 +1,4 @@
 import java.util.*;
-import java.util.stream.Collectors;
 
 enum ProcessState {
     READY,
@@ -21,6 +20,8 @@ class Process {
     int startTime;
     int completionTime;
     int blockedTimeRemaining;
+    int execPoint;
+    boolean inBurst;
 
     public Process(String name, int cpuBurst, int ioDuration, int totalCPUTime, int order, int priority) {
         this.name = name;
@@ -34,6 +35,8 @@ class Process {
         this.state = ProcessState.READY;
         this.startTime = -1;
         this.completionTime = 0;
+        this.execPoint = 0;
+        inBurst = false;
     }
 }
 
@@ -41,26 +44,34 @@ class Scheduler {
     private List<Process> processes;
     private int currentTime;
     private Process runningProcess;
+    private Process nextProcess;
 
     public Scheduler(List<Process> processes) {
         this.processes = processes;
         this.currentTime = 0;
         this.runningProcess = null;
+        nextProcess = null;
     }
 
     public void run() {
         while (!allProcessesCompleted()) {
-            Process nextProcess = getNextProcess();
-            if (nextProcess != null) {
-                executeProcess(nextProcess);
-            } else {
-                redistributeCredits();
+            if(runningProcess == null) 
+            {
+                Process nextProcess = getNextProcess();
+            } 
+            else if (runningProcess.credits == 0 || runningProcess.state == ProcessState.BLOCKED ) {
+                Process nextProcess = getNextProcess();
             }
+            if (nextProcess != null)
+                executeProcess(nextProcess);
+            if (processes.stream().allMatch(p -> p.credits <= 0))
+                redistributeCredits();
+            
             updateProcessStates();
             printTimeline();
+
             currentTime++;
         }
-        printResults();
     }
 
     private boolean allProcessesCompleted() {
@@ -68,11 +79,17 @@ class Scheduler {
     }
 
     private Process getNextProcess() {
-        return processes.stream()
-                .filter(p -> p.state == ProcessState.READY && p.credits > 0)
-                .max(Comparator.comparingInt((Process p) -> p.credits)
-                        .thenComparingInt(p -> p.order))
-                .orElse(null);
+        for (Process process : processes) {
+            if (process.state != ProcessState.BLOCKED && process.state != ProcessState.EXIT) {
+                if (nextProcess == null)
+                    nextProcess = processes.get(3);
+                if (process.credits > nextProcess.credits)
+                        nextProcess = process;
+                else if (process.credits == nextProcess.credits && process.order < nextProcess.order)
+                    nextProcess = process;
+            }
+        }
+        return nextProcess;
     }
 
     private void executeProcess(Process process) {
@@ -82,82 +99,86 @@ class Scheduler {
             }
             runningProcess = process;
             process.state = ProcessState.RUNNING;
-            if (process.startTime == -1) {
+            if (process.startTime == 0) {
                 process.startTime = currentTime;
             }
-            if (process.cpuBurst > 0 && process.remainingCPUTime % process.cpuBurst == 0) {
+            if (process.cpuBurst > 0 && process.execPoint == process.cpuBurst) {
                 process.state = ProcessState.BLOCKED;
                 process.blockedTimeRemaining = process.ioDuration;
                 runningProcess = null;
-            }        
+                nextProcess = null;
+            }  
         }
 
-        process.remainingCPUTime--;
-        process.credits--;
-
+        if (process.cpuBurst > 0 && process.execPoint == process.cpuBurst) {
+            process.state = ProcessState.BLOCKED;
+            process.blockedTimeRemaining = process.ioDuration;
+            runningProcess = null;
+            nextProcess = null;
+        }
         if (process.remainingCPUTime == 0) {
             process.state = ProcessState.EXIT;
+            runningProcess = null;
+            nextProcess = null;
             process.completionTime = currentTime;
-            runningProcess = null;
-        } else if (process.cpuBurst > 0 && process.remainingCPUTime % process.cpuBurst == 0) {
-            process.state = ProcessState.BLOCKED;
-            runningProcess = null;
+        } 
+        if (process.state != ProcessState.BLOCKED && process.state != ProcessState.EXIT) {
+            process.remainingCPUTime--;
+            process.credits--;
+            process.execPoint++;
         }
+        if (process.credits == 0 && process.execPoint == process.cpuBurst) {
+            process.inBurst = true;
+        }  
+            
+    }
+
+    private void printTimeline() {
+        StringBuilder lastLine = new StringBuilder();
+        
+        for (int i = 0; i <= currentTime; i++) {
+            final int currentTimeSlot = i;
+            lastLine.setLength(0);
+    
+            lastLine.append(String.format("%d: ", currentTimeSlot));
+            
+            processes.forEach(p -> {
+                if (p.startTime <= currentTimeSlot && (p.completionTime == 0 || p.completionTime > currentTimeSlot)) {
+                    lastLine.append(String.format("%s(%s - credit = %s) ", p.name, p.state, p.credits));
+                }
+            });
+        }
+        System.out.println(lastLine.toString());
     }
 
     private void redistributeCredits() {
         for (Process p : processes) {
             if (p.state != ProcessState.EXIT) {
-                p.credits = p.credits / 2 + p.priority;
+                p.credits = (p.credits / 2) + p.priority;
             }
         }
-        updateOrder();
-    }
-    
-    private void updateOrder() {
-        List<Process> nonExitedProcesses = processes.stream()
-                .filter(p -> p.state != ProcessState.EXIT)
-                .sorted(Comparator.comparingInt(p -> p.credits))  // Processos com menos créditos recebem menor ordem
-                .collect(Collectors.toList());
-    
-        for (int i = 0; i < nonExitedProcesses.size(); i++) {
-            nonExitedProcesses.get(i).order = i + 1;
-        }
+        runningProcess = null;
     }
 
     private void updateProcessStates() {
         for (Process p : processes) {
             if (p.state == ProcessState.BLOCKED) {
-                if (--p.blockedTimeRemaining == 0) {
+                if (--p.blockedTimeRemaining == -1) {
                     p.state = ProcessState.READY;
+                    p.execPoint = 0;
                 }
             }
-        }
-    }
-
-    private void printResults() {
-        System.out.println("Process Scheduling Results:");
-        for (Process p : processes) {
-            int turnaroundTime = p.completionTime - p.startTime;
-            System.out.printf("Process %s: Turnaround Time = %d ms%n", p.name, turnaroundTime);
-        }
-    }
-
-    private void printTimeline() {
-        System.out.println("Timeline:");
-        for (int i = 0; i < currentTime; i++) {
-            final int currentTimeSlot = i;  // Criar uma variável final ou efetivamente final
-            System.out.printf("%d: ", currentTimeSlot);
-            processes.forEach(p -> {
-                if (p.startTime <= currentTimeSlot && (p.completionTime == 0 || p.completionTime > currentTimeSlot)) {
-                    System.out.printf("%s(%s) ", p.name, p.state);
-                }
-            });
-            System.out.println();
+            /*if (p.inBurst == true) {
+                currentTime++;
+                p.state = ProcessState.BLOCKED;
+                p.blockedTimeRemaining = p.ioDuration;
+                runningProcess = null;
+                nextProcess = null;
+                p.inBurst = false;
+            }*/
         }
     }
 }
-
 
 public class ProcessScheduler {
     public static void main(String[] args) {
