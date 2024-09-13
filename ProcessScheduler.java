@@ -59,7 +59,7 @@ class Scheduler {
             {
                 Process nextProcess = getNextProcess();
             } 
-            else if (runningProcess.credits == 0 || runningProcess.state == ProcessState.BLOCKED ) {
+            else if (runningProcess.credits == 0 || runningProcess.state == ProcessState.BLOCKED) {
                 Process nextProcess = getNextProcess();
             }
             if (nextProcess != null)
