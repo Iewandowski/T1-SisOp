@@ -36,7 +36,7 @@ class Process {
         this.startTime = -1;
         this.completionTime = 0;
         this.execPoint = 0;
-        inBurst = false;
+        this.inBurst = false;
     }
 }
 
@@ -45,16 +45,21 @@ class Scheduler {
     private int currentTime;
     private Process runningProcess;
     private Process nextProcess;
+    private Process lastProcess;
 
     public Scheduler(List<Process> processes) {
         this.processes = processes;
         this.currentTime = 0;
         this.runningProcess = null;
-        nextProcess = null;
+        this.nextProcess = null;
     }
 
     public void run() {
         while (!allProcessesCompleted()) {
+            printTimeline();
+            updateProcessStates();
+            if (processes.stream().allMatch(p -> p.credits <= 0))
+                redistributeCredits();
             if(runningProcess == null) 
             {
                 Process nextProcess = getNextProcess();
@@ -64,13 +69,12 @@ class Scheduler {
             }
             if (nextProcess != null)
                 executeProcess(nextProcess);
-            if (processes.stream().allMatch(p -> p.credits <= 0))
-                redistributeCredits();
-            
-            updateProcessStates();
-            printTimeline();
-
             currentTime++;
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -83,12 +87,13 @@ class Scheduler {
             if (process.state != ProcessState.BLOCKED && process.state != ProcessState.EXIT) {
                 if (nextProcess == null)
                     nextProcess = processes.get(3);
-                if (process.credits > nextProcess.credits)
+                if (process.credits > nextProcess.credits && process != lastProcess)
                         nextProcess = process;
-                else if (process.credits == nextProcess.credits && process.order < nextProcess.order)
+                else if (process.credits == nextProcess.credits && process.order < nextProcess.order && process != lastProcess)
                     nextProcess = process;
             }
         }
+        lastProcess = runningProcess;
         return nextProcess;
     }
 
@@ -105,6 +110,7 @@ class Scheduler {
             if (process.cpuBurst > 0 && process.execPoint == process.cpuBurst) {
                 process.state = ProcessState.BLOCKED;
                 process.blockedTimeRemaining = process.ioDuration;
+                lastProcess = runningProcess;
                 runningProcess = null;
                 nextProcess = null;
             }  
@@ -113,15 +119,10 @@ class Scheduler {
         if (process.cpuBurst > 0 && process.execPoint == process.cpuBurst) {
             process.state = ProcessState.BLOCKED;
             process.blockedTimeRemaining = process.ioDuration;
+            lastProcess = runningProcess;
             runningProcess = null;
             nextProcess = null;
         }
-        if (process.remainingCPUTime == 0) {
-            process.state = ProcessState.EXIT;
-            runningProcess = null;
-            nextProcess = null;
-            process.completionTime = currentTime;
-        } 
         if (process.state != ProcessState.BLOCKED && process.state != ProcessState.EXIT) {
             process.remainingCPUTime--;
             process.credits--;
@@ -129,8 +130,16 @@ class Scheduler {
         }
         if (process.credits == 0 && process.execPoint == process.cpuBurst) {
             process.inBurst = true;
-        }  
-            
+        }
+        if (process.remainingCPUTime == 0) {
+            process.state = ProcessState.EXIT;
+            lastProcess = runningProcess;
+            runningProcess = null;
+            nextProcess = null;
+            process.completionTime = currentTime;
+            process.inBurst = false;
+
+        } 
     }
 
     private void printTimeline() {
@@ -152,12 +161,16 @@ class Scheduler {
     }
 
     private void redistributeCredits() {
+        currentTime++;
         for (Process p : processes) {
             if (p.state != ProcessState.EXIT) {
                 p.credits = (p.credits / 2) + p.priority;
             }
         }
+        lastProcess = runningProcess;
         runningProcess = null;
+        nextProcess = null;
+        printTimeline();
     }
 
     private void updateProcessStates() {
@@ -168,14 +181,18 @@ class Scheduler {
                     p.execPoint = 0;
                 }
             }
-            /*if (p.inBurst == true) {
+            if (p.inBurst == true && p.state != ProcessState.EXIT) {
                 currentTime++;
                 p.state = ProcessState.BLOCKED;
                 p.blockedTimeRemaining = p.ioDuration;
+                lastProcess = runningProcess;
                 runningProcess = null;
                 nextProcess = null;
                 p.inBurst = false;
-            }*/
+            }
+        }
+        if (processes.stream().allMatch(p -> p.state == ProcessState.EXIT)) {
+            System.exit(0);
         }
     }
 }
